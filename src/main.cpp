@@ -179,8 +179,8 @@ void setup() {
 //****************************************************************************//
 // Main System Code
 void loop() {
-  // Local Variable Declaration
-  uint failure_cntr = 0;
+  // Declare Local Variables
+  static uint failure_cntr = 0;
 
   // Evaluate Flow Rate
   cli(); // Disable Interrrupts Momentarily
@@ -197,12 +197,6 @@ void loop() {
   digitalWrite(HEATEROUT, !heater); // Invert since N-MOS is used
   digitalWrite(PUMPOUT, !pump); // Invert since N-MOS is used
 
-  // Indicate System Operation and Delay Processing
-  digitalWrite(LED_BUILTIN, LOW); // HEARTBEAT LED
-  delay(500);
-  digitalWrite(LED_BUILTIN, HIGH); // HEARTBEAT LED
-  delay(500);
-
   // Evaluate Pump Failure
   if (pump && (flow_rate < float(1))) {
     alarm = true;
@@ -215,13 +209,16 @@ void loop() {
           String("The HogWater System has Experienced a Pump Failure. ") +
           String("There appears to be no water flow. Please Review ASAP.")
                 );
-    } else { failure_cntr--; }
+    } else if (failure_cntr > 0) { failure_cntr--; }
   }
   else {
     // Reset Alarm Count and Indicator
     alarm = false;
     failure_cntr = 0;
   }
+
+  // System Delay
+  delay(1000);
 }
 //****************************************************************************//
 

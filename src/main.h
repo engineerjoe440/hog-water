@@ -31,10 +31,10 @@ const char* local_e_password =  "St@nl3ys0lut!0n$t3ch";
 
 //****************************************************************************//
 // Define Pins
-#define ONEWIREBUS 4
-#define HALLSENSOR 2
-#define HEATEROUT 3
-#define PUMPOUT 5
+#define ONEWIREBUS 3  // RX
+#define HALLSENSOR 1  // TX
+#define HEATEROUT 0   // GPIO0
+#define PUMPOUT 2     // GPIO2
 //****************************************************************************//
 
 // END
