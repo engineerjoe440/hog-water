@@ -11,6 +11,10 @@ volatile long hallEffctCnt = 0;
 int flow_rate = 0;
 bool heater = false;
 bool pump = false;
+bool alarm = false;
+
+// Define Recipient Email Address
+String send_to_address = "engineerjoe440@yahoo.com";
 
 //****************************************************************************//
 // Define Web Server Port
@@ -18,13 +22,15 @@ AsyncWebServer server(80);
 // Configure One-Wire Temperature Sensor
 OneWire oneWire(ONEWIREBUS);          // Initialize OneWire
 DallasTemperature sensors(&oneWire);  // Initialize Temperature Sensor
+// Define Email Sender Object
+EMailSender emailSend(local_e_address, local_e_password);
 //****************************************************************************//
 
 //****************************************************************************//
 // Define Data Retrieval Functions
 float get_temp(void) {
   sensors.requestTemperatures();
-  return sensors.getTempFByIndex(0);
+  return max(sensors.getTempFByIndex(0), float(-40));
 }
 float get_flow(void) {
   return flow_rate;
@@ -34,6 +40,18 @@ bool get_heater(void) {
 }
 bool get_pump(void) {
   return pump;
+}
+bool get_pump_alarm(void) {
+  return alarm;
+}
+// Define String Formatting Functions
+String bool_to_tf_string(bool state){
+  if (state){ return "True"; }
+  else { return "False"; }
+}
+String bool_to_onoff_string(bool state){
+  if (state){ return "ON"; }
+  else { return "OFF"; }
 }
 // Define Simple Interrupt Handler
 void ICACHE_RAM_ATTR pulseCounter() {
@@ -47,8 +65,9 @@ String index_template(const String& var)
 {
   if(var == "AMBIENTTEMP"){ return String( get_temp() ); }
   if(var == "FLOWRATE"){ return String( get_flow() ); }
-  if(var == "PUMPSTATE"){ return String( get_pump() ); }
-  if(var == "HEATERSTATE"){ return String( get_heater() ); }
+  if(var == "PUMPSTATE"){ return bool_to_onoff_string( get_pump() ); }
+  if(var == "PUMPALARM"){ return bool_to_tf_string( get_pump_alarm() ); }
+  if(var == "HEATERSTATE"){ return bool_to_onoff_string( get_heater() ); }
   return String(); // Return Empty String Otherwise
 }
 String json_temp(){
@@ -60,17 +79,36 @@ String json_flow(){
 String json_pump(){
   return String("{\"pump_state\":\""+ String(get_temp()) +"\"}");
 }
+String json_pump_alarm(){
+  return String("{\"pump_alarm\":\""+ String(get_pump_alarm()) +"\"}");
+}
 String json_heat(){
   return String("{\"heater_state\":\""+ String(get_temp()) +"\"}");
 }
 //****************************************************************************//
 
 //****************************************************************************//
+// Define Email Sender Function
+void send_email(  const String& recipient,
+                  const String& subject,
+                  const String& message) {
+  // Declare Character Array for Recipient Address
+  char addrBuf[255];
+  recipient.toCharArray(addrBuf, 255);
+
+  // Generate Message From Arguments
+  EMailSender::EMailMessage e_message;
+  e_message.subject = subject;  // Load Subject
+  e_message.message = message;  // Load Message
+
+  // Send Message
+  EMailSender::Response resp = emailSend.send(addrBuf, e_message);
+}
+//****************************************************************************//
+
+//****************************************************************************//
 // Main Initialization Function
 void setup() {
-  // Initialization Function
-  Serial.begin(9600);
-
   // Define Pin Modes
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(HALLSENSOR, INPUT);
@@ -81,27 +119,18 @@ void setup() {
   attachInterrupt(HALLSENSOR, pulseCounter, RISING);
 
   // Initialize SPIFFS (File System)
-  if(!SPIFFS.begin()){
-     Serial.println("An Error has occurred while mounting SPIFFS");
-     return;
-  }
+  if(!SPIFFS.begin()){ return; }
 
   // Initialize WiFi; Attempt first with Primary Network
   int wifi_cntr = 0;
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
-    // Try Primary Network First
-    if (wifi_cntr < 20) { Serial.println("Connecting to WiFi.."); }
-    else if (wifi_cntr == 20) { WiFi.begin(failover_ssid, failover_password); }
-    // Try Failover Network
-    else if (wifi_cntr<40) { Serial.println("Connecting to Failover WiFi.."); }
-    else { Serial.println("Failed to Connect."); return; }
+    // Try Primary Network First, then Fail Over to InventorNet
+    if (wifi_cntr == 20) { WiFi.begin(failover_ssid, failover_password); }
+    else if (wifi_cntr>40) { return; }
     if (wifi_cntr < 41) { wifi_cntr++; }
   }
-
-  // Print Local IP Address on Active Serial
-  Serial.println(WiFi.localIP());
 
   // Define Main Index Template
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -125,6 +154,9 @@ void setup() {
   server.on("/api/pump", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(200, "text/json", json_pump() );
   });
+  server.on("/api/pump_alarm", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/json", json_pump_alarm() );
+  });
   server.on("/api/heat", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(200, "text/json", json_heat() );
   });
@@ -135,12 +167,20 @@ void setup() {
   // Start Object Controls
   sensors.begin();
   server.begin();
+
+  // Send Email to Signal Successful Boot
+  send_email( send_to_address,  // ADDRESS
+              "HogWater BOOT",  // SUBJECT
+              "The HogWater System has Booted Successfully!" // BODY
+            );
 }
 //****************************************************************************//
 
 //****************************************************************************//
+// Main System Code
 void loop() {
-  // Main System Code
+  // Local Variable Declaration
+  uint failure_cntr = 0;
 
   // Evaluate Flow Rate
   cli(); // Disable Interrrupts Momentarily
@@ -162,6 +202,26 @@ void loop() {
   delay(500);
   digitalWrite(LED_BUILTIN, HIGH); // HEARTBEAT LED
   delay(500);
+
+  // Evaluate Pump Failure
+  if (pump && (flow_rate < float(1))) {
+    alarm = true;
+    // Manage Sending Alarm Notice Emails
+    if (failure_cntr == 0) {
+      failure_cntr = 1000; // Set to Countdown Time; 1000 Seconds
+      // Send Email to Signal Successful Boot
+      send_email( send_to_address,  // ADDRESS
+          "HogWater Pump Failure",  // SUBJECT
+          String("The HogWater System has Experienced a Pump Failure. ") +
+          String("There appears to be no water flow. Please Review ASAP.")
+                );
+    } else { failure_cntr--; }
+  }
+  else {
+    // Reset Alarm Count and Indicator
+    alarm = false;
+    failure_cntr = 0;
+  }
 }
 //****************************************************************************//
 

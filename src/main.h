@@ -8,8 +8,8 @@ Hog Water - A simple hog water heater control system by Stanley Solutions.
 #include <stdio.h>
 #include <Arduino.h>
 #include <OneWire.h>
-#include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
+#include <EMailSender.h>
 #include <ESPAsyncWebServer.h>
 #include <DallasTemperature.h>
 
@@ -21,6 +21,12 @@ const char* password =  "$t@nl3yt3ch";
 // Define Debug Network Params
 const char* failover_ssid = "InventorNet";
 const char* failover_password =  "M!cr0c0ntr0l";
+//****************************************************************************//
+
+//****************************************************************************//
+// Define Email Parameters
+const char* local_e_address = "stanleyembeddedtech@gmail.com";
+const char* local_e_password =  "St@nl3ys0lut!0n$t3ch";
 //****************************************************************************//
 
 //****************************************************************************//
