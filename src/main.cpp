@@ -9,6 +9,7 @@ Hog Water - A simple hog water heater control system by Stanley Solutions.
 // Define Global Variables
 volatile long hallEffctCnt = 0;
 int flow_rate = 0;
+uint uptime = 0;
 bool heater = false;
 bool pump = false;
 bool alarm = false;
@@ -44,6 +45,10 @@ bool get_pump(void) {
 bool get_pump_alarm(void) {
   return alarm;
 }
+String get_uptime(void) {
+  if (uptime != 65535){ return(String(uptime)); }
+  else { return "SURPASSED COUNTABLE LEVEL"; }
+}
 // Define String Formatting Functions
 String bool_to_tf_string(bool state){
   if (state){ return "True"; }
@@ -68,6 +73,7 @@ String index_template(const String& var)
   if(var == "PUMPSTATE"){ return bool_to_onoff_string( get_pump() ); }
   if(var == "PUMPALARM"){ return bool_to_tf_string( get_pump_alarm() ); }
   if(var == "HEATERSTATE"){ return bool_to_onoff_string( get_heater() ); }
+  if(var == "UPTIME"){ return get_uptime(); }
   return String(); // Return Empty String Otherwise
 }
 String json_temp(){
@@ -118,6 +124,8 @@ void setup() {
   // Attach Interrupt
   attachInterrupt(HALLSENSOR, pulseCounter, RISING);
 
+  // Start Sensor
+
   // Initialize SPIFFS (File System)
   if(!SPIFFS.begin()){ return; }
 
@@ -126,10 +134,15 @@ void setup() {
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
-    // Try Primary Network First, then Fail Over to InventorNet
-    if (wifi_cntr == 20) { WiFi.begin(failover_ssid, failover_password); }
-    else if (wifi_cntr>40) { return; }
-    if (wifi_cntr < 41) { wifi_cntr++; }
+    // Try Connecting to WiFi Networks
+    /*
+      1) Attempt to Connect to BarnNet (give it 10 shots)
+      2) Attempt to Connect to InventorNet (failover - again, 10 shots)
+      3) Stop Trying to Connect, Load Access Point Instead
+    */
+    if (wifi_cntr == 10) { WiFi.begin(failover_ssid, failover_password); }
+    else if (wifi_cntr>20) { WiFi.softAP(ap_ssid, ap_pass); break; }
+    if (wifi_cntr < 21) { wifi_cntr++; }
   }
 
   // Define Main Index Template
@@ -164,8 +177,7 @@ void setup() {
     request->send(200, "text/json", json_heat() );
   });
 
-  // Start Object Controls
-  sensors.begin();
+  // Start Server
   server.begin();
 
   // Send Email to Signal Successful Boot
@@ -181,6 +193,7 @@ void setup() {
 void loop() {
   // Declare Local Variables
   static uint failure_cntr = 0;
+  static bool block_pump = false;
 
   // Evaluate Flow Rate
   cli(); // Disable Interrrupts Momentarily
@@ -188,37 +201,79 @@ void loop() {
   hallEffctCnt = 0; // Reset Counter
   sei(); // Re-Enable Interrupts
 
-  // Make Control Decisions to Enable Pump
-  if (get_temp() < 35) { pump = true; }
-  else { pump = false; }
-  // Make Control Decisions to Enable Heater
-  if (get_temp() < 32) { heater = true; }
-  else { heater = false; }
-  digitalWrite(HEATEROUT, !heater); // Invert since N-MOS is used
-  digitalWrite(PUMPOUT, !pump); // Invert since N-MOS is used
+  // Set Digital Outputs Accordingly
+  digitalWrite(HEATEROUT, heater); // N-MOS is used
+  if (!block_pump) { digitalWrite(PUMPOUT, pump); } // No Pump Failure
+  else { digitalWrite(PUMPOUT, LOW); } // Pump Failure - Force Pump OFF
 
   // Evaluate Pump Failure
   if (pump && (flow_rate < float(1))) {
-    alarm = true;
     // Manage Sending Alarm Notice Emails
+    // Reset Block Indicator on Start
     if (failure_cntr == 0) {
-      failure_cntr = 1000; // Set to Countdown Time; 1000 Seconds
-      // Send Email to Signal Successful Boot
+      block_pump = false; // This will cause pump restart attempt
+    }
+    // Leave a buffer of time for pump to start
+    else if (failure_cntr == 100) {
+      alarm = true;
+      // Send Email to Indicate Pump Failure
       send_email( send_to_address,  // ADDRESS
           "HogWater Pump Failure",  // SUBJECT
           String("The HogWater System has Experienced a Pump Failure. ") +
           String("There appears to be no water flow. Please Review ASAP.")
                 );
-    } else if (failure_cntr > 0) { failure_cntr--; }
+    }
+    // Disable Pump and Send Notice
+    else if (failure_cntr > 750) {
+      block_pump = true; // Disable Pump to Prevent Burnout
+      // Send Email to Indicate Pump Block
+      send_email( send_to_address,  // ADDRESS
+          "HogWater Pump Failure",  // SUBJECT
+          String("The HogWater System has Experienced a Pump Failure. ") +
+          String("The pump failure has surpassed a time limit, the pump ") +
+          String("is now being disabled to prevent pump burnout.")
+                );
+    }
+    // Increment Faiure Counter
+    failure_cntr++;
   }
   else {
+    // Send Successful Failure Clear Email
+    if (alarm) {
+      // Send Email to Indicate Successful Restart
+      send_email( send_to_address,  // ADDRESS
+          "HogWater Pump Restart",  // SUBJECT
+          String("The HogWater System Experienced a Pump Failure that has ") +
+          String("now been cleared. The pump has successfully been restarted.")
+                );
+    }
     // Reset Alarm Count and Indicator
     alarm = false;
+    block_pump = false;
     failure_cntr = 0;
   }
 
-  // System Delay
-  delay(1000);
+  // Make Control Decisions to Enable Pump
+  if ((get_temp() < 35) && (pump==false)) { pump = true; }
+  else if((get_temp() > 38) && (pump==true)) { pump = false; }
+  // Make Control Decisions to Enable Heater
+  if ((get_temp() < 32) && (heater==false)) { heater = true; }
+  else if((get_temp() > 35) && (heater==true)) { heater = false; }
+
+  // Monitor for Temperature Sensor Failure
+  if (get_temp() < -40) {
+    // Send Email to Indicate Failed Temp Sensor
+    send_email( send_to_address,  // ADDRESS
+        "HogWater Temp Sensor Failure",  // SUBJECT
+        String("The HogWater System has Experienced a Failure with the ") +
+        String("DS18B20 Temperature Sensor.")
+              );
+  }
+
+  // Increment System Uptime Counter
+  if (uptime != 65535) {
+    uptime++;
+  }
 }
 //****************************************************************************//
 

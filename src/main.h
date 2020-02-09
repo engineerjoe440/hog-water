@@ -21,6 +21,10 @@ const char* password =  "$t@nl3yt3ch";
 // Define Debug Network Params
 const char* failover_ssid = "InventorNet";
 const char* failover_password =  "M!cr0c0ntr0l";
+
+// Define Failover Access Point Parameters
+const char* ap_ssid = "HogWaterAP";
+const char* ap_pass = "$t@nl3yt3ch";
 //****************************************************************************//
 
 //****************************************************************************//
@@ -31,10 +35,10 @@ const char* local_e_password =  "St@nl3ys0lut!0n$t3ch";
 
 //****************************************************************************//
 // Define Pins
-#define ONEWIREBUS 3  // RX
-#define HALLSENSOR 1  // TX
+#define ONEWIREBUS 1  // TX
+#define HALLSENSOR 3  // RX
 #define HEATEROUT 0   // GPIO0
-#define PUMPOUT 2     // GPIO2
+#define PUMPOUT 2     // GPIO2 (ON-BOARD LED)
 //****************************************************************************//
 
 // END

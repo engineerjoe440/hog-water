@@ -3,9 +3,24 @@
 	<head>
     <meta http-equiv="refresh" content="30">
     <style>
+			body {
+				background-color: #2d383a;
+			}
+
+			h1 {color: white;}
+
+			td {text-align:center;}
+
+			p {color: white;}
+
       .centerTable {
         margin: 0px auto;
-        border:1px solid black;
+        border:4px solid #1569c7;
+				padding-right:10px;
+				padding-left: 10px;
+				padding-top: 20px;
+				padding-bottom: 10px;
+				color: #3090c7;
       }
     </style>
   </head>
@@ -15,29 +30,30 @@
   <br>
   <table class="centerTable">
     <tr>
-      <th colspan="2"><strong>Hog Water</strong></th>
+      <th colspan="2"><h1>Hog Water</h1></th>
     </tr>
     <tr>
       <td>Current Ambient Temperature:</td>
-      <td style="text-align:center">%AMBIENTTEMP%&#176;F</td>
+      <td>%AMBIENTTEMP%&#176;F</td>
     </tr>
     <tr>
       <td>Water Flow Rate:</td>
-      <td style="text-align:center">%FLOWRATE% GPM</td>
+      <td>%FLOWRATE% GPM</td>
     </tr>
     <tr>
       <td>Water Pump State:</td>
-      <td style="text-align:center">%PUMPSTATE%</td>
+      <td>%PUMPSTATE%</td>
     </tr>
     <tr>
       <td>Water Pump Alarm:</td>
-      <td style="text-align:center">%PUMPALARM%</td>
+      <td>%PUMPALARM%</td>
     </tr>
     <tr>
       <td>Water Heater State:</td>
-      <td style="text-align:center">%HEATERSTATE%</td>
+      <td>%HEATERSTATE%</td>
     </tr>
   </table>
-  <p align="center">&#9400; 2020 - Stanley Solutions</p>
+	<p align="center">System Uptime: %UPTIME%</p>
+  <p align="center">&#169; 2020 - Stanley Solutions</p>
 </body>
 </html>
